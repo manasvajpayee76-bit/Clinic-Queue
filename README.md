@@ -1,0 +1,508 @@
+Patient arrives at the clinic and visits the reception desk.
+Receptionist registers the patient by entering basic details into the system.
+The system automatically generates a unique token number for the patient.
+Patient information and token details are stored in MongoDB.
+The patient is added to the digital waiting queue.
+The receptionist dashboard displays all waiting patients and the currently serving patient.
+When the receptionist clicks "Call Next", the next patient in the queue becomes the active patient.
+The system updates the queue status and saves the changes in the database.
+Socket.io sends real-time updates to all connected devices instantly.
+Patients can view the currently serving token on their mobile devices.
+Patients can check how many people are ahead of them in the queue.
+The system calculates estimated waiting time based on the number of patients ahead and the average consultation time.
+All queue updates appear instantly without requiring a page refresh.
+The system ensures smooth communication between the receptionist panel and patient screens.
+It reduces manual work, eliminates paper tokens, and improves clinic efficiency.
+The solution provides a transparent, organized, and user-friendly waiting experience for both patients and clinic staff.
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CareQ - Clinic Queue Management System</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons@latest/tabler-icons.min.css">
+</head>
+<body>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0;font-family:'Inter',var(--font-sans);}
+  .app{background:#f8fafc;min-height:700px;display:flex;flex-direction:column;}
+  .sidebar{width:220px;background:#0f1623;min-height:700px;display:flex;flex-direction:column;padding:20px 0;flex-shrink:0;}
+  .sidebar-brand{padding:0 20px 24px;border-bottom:1px solid #1e2a3a;}
+  .brand-icon{width:36px;height:36px;background:#1d6ef5;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;}
+  .brand-name{font-size:13px;font-weight:600;color:#fff;letter-spacing:0.01em;}
+  .brand-sub{font-size:11px;color:#4a6080;margin-top:2px;}
+  .live-chip{display:inline-flex;align-items:center;gap:5px;background:#0d2a1a;border:1px solid #1a4a2e;border-radius:20px;padding:3px 8px;margin-top:8px;}
+  .live-dot{width:6px;height:6px;border-radius:50%;background:#22c55e;animation:blink 1.4s infinite;}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+  .live-text{font-size:10px;font-weight:500;color:#22c55e;}
+  .nav{padding:16px 12px;flex:1;}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;margin-bottom:2px;color:#6b8099;font-size:13px;font-weight:500;transition:all 0.15s;}
+  .nav-item:hover{background:#1e2a3a;color:#c8d8e8;}
+  .nav-item.active{background:#1d3a6e;color:#60a5fa;}
+  .nav-icon{font-size:17px;flex-shrink:0;}
+  .sidebar-footer{padding:16px 12px;border-top:1px solid #1e2a3a;}
+  .sidebar-footer-label{font-size:10px;color:#2e4a64;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;}
+  .avg-input-wrap{display:flex;align-items:center;gap:6px;}
+  .avg-input-wrap input{width:44px;background:#1e2a3a;border:1px solid #2a3f56;border-radius:6px;color:#c8d8e8;font-size:12px;padding:4px 6px;text-align:center;}
+  .avg-input-wrap span{font-size:11px;color:#4a6080;}
+  .main{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+  .topbar{background:#fff;border-bottom:1px solid #e8eef5;padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+  .page-title{font-size:15px;font-weight:600;color:#0f1623;}
+  .page-sub{font-size:12px;color:#94a3b8;margin-top:1px;}
+  .topbar-actions{display:flex;gap:12px;align-items:center;}
+  .stats-bar{display:flex;gap:10px;}
+  .stat-chip{background:#f1f5f9;border-radius:8px;padding:5px 12px;text-align:center;}
+  .stat-chip-val{font-size:16px;font-weight:600;color:#0f1623;}
+  .stat-chip-lbl{font-size:10px;color:#94a3b8;margin-top:1px;}
+  .stat-chip.green .stat-chip-val{color:#16a34a;}
+  .stat-chip.blue .stat-chip-val{color:#1d6ef5;}
+  .stat-chip.orange .stat-chip-val{color:#ea580c;}
+  .content{padding:20px 24px;flex:1;overflow-y:auto;display:none;}
+  .content.active{display:block;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+  .card{background:#fff;border:1px solid #e8eef5;border-radius:14px;padding:18px 20px;}
+  .card-hd{font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:14px;display:flex;align-items:center;gap:6px;}
+  .card-hd i{font-size:14px;}
+  label.field-lbl{font-size:12px;font-weight:500;color:#475569;display:block;margin-bottom:5px;}
+  input[type=text].fi,select.fi{width:100%;padding:9px 11px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;color:#0f1623;background:#fff;margin-bottom:10px;transition:border 0.15s;}
+  input[type=text].fi:focus,select.fi:focus{outline:none;border-color:#1d6ef5;}
+  .row{display:flex;gap:8px;align-items:center;}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid #e2e8f0;background:#fff;color:#475569;transition:all 0.15s;}
+  .btn:hover{background:#f8fafc;}
+  .btn:active{transform:scale(0.98);}
+  .btn-primary{background:#1d6ef5;color:#fff;border-color:#1d6ef5;}
+  .btn-primary:hover{background:#1558cc;}
+  .btn-success{background:#16a34a;color:#fff;border-color:#16a34a;width:100%;}
+  .btn-success:hover{background:#15803d;}
+  .btn-ghost{background:transparent;border:none;color:#94a3b8;padding:6px;}
+  .btn-ghost:hover{color:#ef4444;}
+  .current-serving{background:#0f1623;border-radius:14px;padding:20px;text-align:center;margin-bottom:10px;}
+  .cs-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#4a6080;margin-bottom:4px;}
+  .cs-token{font-size:52px;font-weight:700;color:#fff;line-height:1;letter-spacing:-0.02em;}
+  .cs-token.flash{animation:tokenflash 0.6s ease;}
+  @keyframes tokenflash{0%{color:#fff}30%{color:#60a5fa}100%{color:#fff}}
+  .cs-name{font-size:13px;color:#6b8099;margin-top:4px;}
+  .cs-time{font-size:11px;color:#2e4a64;margin-top:6px;}
+  .queue-list{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;}
+  .q-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;border:1px solid #e8eef5;background:#fafbfd;transition:all 0.15s;}
+  .q-item:hover{border-color:#c7d7ef;background:#f0f6ff;}
+  .q-item.next{border-color:#93c5fd;background:#eff6ff;}
+  .q-token{width:36px;height:36px;border-radius:9px;background:#e8f0fe;color:#1d6ef5;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;}
+  .q-item.next .q-token{background:#1d6ef5;color:#fff;}
+  .q-item.urgent-item .q-token{background:#fef2f2;color:#dc2626;}
+  .q-name{font-size:13px;font-weight:500;color:#0f1623;flex:1;}
+  .q-wait{font-size:11px;color:#94a3b8;}
+  .badge{font-size:10px;padding:2px 7px;border-radius:20px;font-weight:500;}
+  .badge-urgent{background:#fef2f2;color:#dc2626;}
+  .badge-normal{background:#f0f6ff;color:#1d6ef5;}
+  .badge-next{background:#dcfce7;color:#16a34a;}
+  .empty{text-align:center;padding:32px 0;color:#94a3b8;font-size:13px;}
+  .empty i{font-size:28px;display:block;margin-bottom:8px;color:#cbd5e1;}
+  .skip-btn{background:#fff;border:1px solid #e2e8f0;color:#94a3b8;border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer;margin-top:8px;width:100%;transition:all 0.15s;}
+  .skip-btn:hover{color:#ef4444;border-color:#fca5a5;}
+
+  /* Patient screen */
+  .patient-hero{background:#0f1623;border-radius:16px;padding:32px 24px;text-align:center;margin-bottom:16px;position:relative;overflow:hidden;}
+  .ph-decoration{position:absolute;top:-30px;right:-30px;width:120px;height:120px;border-radius:50%;border:2px solid #1e2a3a;}
+  .ph-decoration2{position:absolute;bottom:-40px;left:-20px;width:100px;height:100px;border-radius:50%;border:2px solid #1e2a3a;}
+  .ph-eyebrow{font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#4a6080;margin-bottom:8px;}
+  .ph-token{font-size:80px;font-weight:700;color:#fff;line-height:1;letter-spacing:-0.03em;}
+  .ph-token.flash{animation:bigflash 1s ease;}
+  @keyframes bigflash{0%,100%{color:#fff}40%{color:#60a5fa;transform:scale(1.06)}70%{transform:scale(1)}}
+  .ph-name{font-size:14px;color:#6b8099;margin-top:6px;}
+  .ph-time{font-size:11px;color:#2e4a64;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:4px;}
+  .p-stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}
+  .p-stat{background:#fff;border:1px solid #e8eef5;border-radius:12px;padding:14px 16px;}
+  .p-stat-val{font-size:26px;font-weight:600;color:#0f1623;}
+  .p-stat-lbl{font-size:11px;color:#94a3b8;margin-top:2px;}
+  .p-stat.highlight{background:#eff6ff;border-color:#93c5fd;}
+  .p-stat.highlight .p-stat-val{color:#1d6ef5;}
+  .your-token{background:#dcfce7;border:1px solid #86efac;border-radius:12px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;}
+  .yt-tok{font-size:22px;font-weight:700;color:#16a34a;}
+  .yt-lbl{font-size:11px;color:#4ade80;font-weight:500;}
+  .yt-wait{margin-left:auto;font-size:12px;font-weight:600;color:#16a34a;}
+  .upcoming-list{display:flex;flex-direction:column;gap:6px;}
+  .up-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;border:1px solid #e8eef5;background:#fafbfd;}
+  .up-item.yours{border-color:#86efac;background:#f0fdf4;}
+  .up-num{width:32px;height:32px;border-radius:8px;background:#f1f5f9;color:#475569;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;}
+  .up-item.yours .up-num{background:#dcfce7;color:#16a34a;}
+  .set-token-btn{margin-top:14px;width:100%;background:#fff;border:1px dashed #cbd5e1;border-radius:10px;padding:10px;font-size:12px;color:#94a3b8;cursor:pointer;transition:all 0.15s;}
+  .set-token-btn:hover{border-color:#93c5fd;color:#1d6ef5;background:#eff6ff;}
+  .toast-wrap{position:absolute;top:60px;right:20px;z-index:20;}
+  .toast{background:#0f1623;color:#c8d8e8;padding:10px 16px;border-radius:10px;font-size:12px;font-weight:500;border-left:3px solid #1d6ef5;opacity:0;transform:translateX(20px);transition:all 0.3s;pointer-events:none;}
+  .toast.show{opacity:1;transform:translateX(0);}
+  .toast.success{border-left-color:#22c55e;}
+  .toast.error{border-left-color:#ef4444;}
+
+  .layout{display:flex;min-height:700px;}
+  .confirm-bar{background:#fef9c3;border-bottom:1px solid #fde68a;padding:8px 20px;font-size:12px;color:#92400e;display:none;align-items:center;gap:8px;}
+  .confirm-bar.show{display:flex;}
+
+  /* Home button styling */
+  .btn-home{display:flex;align-items:center;gap:6px;padding:8px 12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;color:#475569;font-size:12px;cursor:pointer;transition:all 0.15s;}
+  .btn-home:hover{background:#e8f0fe;border-color:#93c5fd;color:#1d6ef5;}
+</style>
+
+<div class="layout" style="position:relative;">
+
+  <div class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">
+        <i class="ti ti-building-hospital" style="font-size:18px;color:#fff;" aria-hidden="true"></i>
+      </div>
+      <div class="brand-name">CareQ</div>
+      <div class="brand-sub">Clinic Queue System</div>
+      <div class="live-chip">
+        <div class="live-dot"></div>
+        <span class="live-text">Live sync</span>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-item active" onclick="switchView('staff')">
+        <i class="nav-icon ti ti-layout-dashboard"></i>Staff Dashboard
+      </div>
+      <div class="nav-item" onclick="switchView('patient')">
+        <i class="nav-icon ti ti-device-mobile"></i>Patient Display
+      </div>
+      <div class="nav-item" onclick="switchView('settings')">
+        <i class="nav-icon ti ti-settings"></i>Settings
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-label">Avg Time / Patient</div>
+      <div class="avg-input-wrap">
+        <input type="text" id="avg-time" value="10" onchange="updateAvg(this.value)">
+        <span>min</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <div class="page-title" id="page-title">Staff Dashboard</div>
+        <div class="page-sub" id="page-sub">Manage patient queue in real-time</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="stats-bar">
+          <div class="stat-chip blue">
+            <div class="stat-chip-val" id="s-current">—</div>
+            <div class="stat-chip-lbl">Current</div>
+          </div>
+          <div class="stat-chip orange">
+            <div class="stat-chip-val" id="s-waiting">0</div>
+            <div class="stat-chip-lbl">Waiting</div>
+          </div>
+          <div class="stat-chip green">
+            <div class="stat-chip-val" id="s-done">0</div>
+            <div class="stat-chip-lbl">Completed</div>
+          </div>
+        </div>
+        <button class="btn-home" onclick="goHome()" title="Back to Home">
+          <i class="ti ti-home-2"></i>
+          Home
+        </button>
+      </div>
+    </div>
+
+    <!-- Staff Dashboard Content -->
+    <div class="content active" id="staff-content">
+      <div class="grid2">
+        <div class="card">
+          <div class="card-hd"><i class="ti ti-plus"></i>Add Patient</div>
+          <label class="field-lbl">Patient Name</label>
+          <input type="text" class="fi" id="patient-name" placeholder="e.g. John Doe">
+          <label class="field-lbl">Priority Level</label>
+          <select class="fi" id="patient-priority">
+            <option value="normal">Normal</option>
+            <option value="urgent">Urgent</option>
+          </select>
+          <button class="btn-success" onclick="addPatient()"><i class="ti ti-plus"></i>Add to Queue</button>
+        </div>
+
+        <div class="card">
+          <div class="card-hd"><i class="ti ti-play"></i>Current Serving</div>
+          <div class="current-serving">
+            <div class="cs-label">Token Number</div>
+            <div class="cs-token" id="cs-token">—</div>
+            <div class="cs-name" id="cs-name">No active patient</div>
+            <div class="cs-time" id="cs-time"></div>
+            <button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="callNext()"><i class="ti ti-phone"></i>Call Next Patient</button>
+            <button class="skip-btn" onclick="skipCurrent()">Skip Current</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><i class="ti ti-users"></i>Queue List (<span id="queue-count">0</span>)</div>
+        <div class="queue-list" id="queue-list">
+          <div class="empty"><i class="ti ti-users"></i>No patients yet. Register one above.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Patient Display Content -->
+    <div class="content" id="patient-content">
+      <div class="patient-hero">
+        <div class="ph-decoration"></div>
+        <div class="ph-decoration2"></div>
+        <div class="ph-eyebrow">Your Token</div>
+        <div class="ph-token" id="ph-token">—</div>
+        <div class="ph-name" id="ph-name">Waiting for first patient</div>
+        <div class="ph-time" id="ph-time"></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-hd"><i class="ti ti-info-circle"></i>Your Status</div>
+          <div class="your-token" id="your-token-bar" style="display:none;margin-bottom:16px;">
+            <div style="flex:1;">
+              <div class="yt-lbl">Your Token</div>
+              <div class="yt-tok" id="yt-tok">—</div>
+            </div>
+            <div style="text-align:right;">
+              <div class="yt-lbl">Estimated Wait</div>
+              <div class="yt-wait" id="yt-wait">—</div>
+            </div>
+          </div>
+          <div style="font-size:13px;font-weight:500;color:#0f1623;margin-bottom:4px;">People Ahead: <strong id="pp-ahead">—</strong></div>
+          <div style="font-size:13px;font-weight:500;color:#0f1623;">Estimated Wait: <strong id="pp-wait">—</strong> min</div>
+          <button class="set-token-btn" onclick="setYourToken()"><i class="ti ti-edit"></i>Set Your Token</button>
+        </div>
+
+        <div class="card">
+          <div class="card-hd"><i class="ti ti-list"></i>Queue Statistics</div>
+          <div class="p-stats">
+            <div class="p-stat">
+              <div class="p-stat-val" id="s-waiting-alt">0</div>
+              <div class="p-stat-lbl">Waiting</div>
+            </div>
+            <div class="p-stat highlight">
+              <div class="p-stat-val" id="s-done-alt">0</div>
+              <div class="p-stat-lbl">Completed</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><i class="ti ti-clock"></i>Upcoming Patients</div>
+        <div class="upcoming-list" id="upcoming-list">
+          <div class="empty"><i class="ti ti-clock"></i>Queue is empty.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Content -->
+    <div class="content" id="settings-content">
+      <div class="card" style="max-width:500px;">
+        <div class="card-hd"><i class="ti ti-settings"></i>System Settings</div>
+        
+        <label class="field-lbl">Average Time Per Patient (minutes)</label>
+        <input type="text" class="fi" id="avg-time-settings" value="10" onchange="updateAvg(this.value)">
+
+        <label class="field-lbl">System Name</label>
+        <input type="text" class="fi" value="CareQ Premium" disabled>
+
+        <label class="field-lbl">Version</label>
+        <input type="text" class="fi" value="1.0.0" disabled>
+
+        <button class="btn btn-primary" style="margin-top:16px;width:100%;" onclick="confirmClear()"><i class="ti ti-trash"></i>Clear All Patients</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="confirm-bar" id="confirm-bar">
+    <span id="confirm-msg"></span>
+    <button class="btn" onclick="confirmClear()" id="confirm-yes" style="margin-left:auto;">Yes, Clear</button>
+    <button class="btn" onclick="hideConfirm()">Cancel</button>
+  </div>
+
+  <div class="toast-wrap">
+    <div class="toast" id="toast"></div>
+  </div>
+
+</div>
+
+<script>
+  const S = {queue:[],currentToken:null,currentName:null,yourToken:null,lastCalled:null,nextNum:1,completed:0,avgTime:10};
+
+  function switchView(view) {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+    
+    event.target.closest('.nav-item').classList.add('active');
+    document.getElementById(view + '-content').classList.add('active');
+
+    if(view==='staff') {
+      document.getElementById('page-title').textContent='Staff Dashboard';
+      document.getElementById('page-sub').textContent='Manage patient queue in real-time';
+    }else if(view==='patient') {
+      document.getElementById('page-title').textContent='Patient Display';
+      document.getElementById('page-sub').textContent='View your position in the queue';
+    }else {
+      document.getElementById('page-title').textContent='Settings';
+      document.getElementById('page-sub').textContent='Configure system parameters';
+      document.getElementById('avg-time-settings').value=document.getElementById('avg-time').value;
+    }
+  }
+
+  function showToast(msg,type='success') {
+    const t=document.getElementById('toast');
+    t.textContent=msg;
+    t.className='toast show '+type;
+    setTimeout(()=>t.classList.remove('show'),3000);
+  }
+
+  function addPatient() {
+    const nameEl=document.getElementById('patient-name');
+    if(!nameEl.value.trim()){showToast('Please enter patient name','error');return;}
+    const name=nameEl.value.trim();
+    const priority=document.getElementById('patient-priority').value;
+    const token='T'+String(S.nextNum++).padStart(2,'0');
+    const p={id:Date.now(),token,name,priority};
+    if(priority==='urgent'){
+      const fi=S.queue.findIndex(x=>x.priority==='normal');
+      fi>=0?S.queue.splice(fi,0,p):S.queue.push(p);
+    }else S.queue.push(p);
+    nameEl.value='';
+    document.getElementById('patient-priority').value='normal';
+    showToast(token+' — '+name+' added to queue');
+    render();
+  }
+
+  function callNext() {
+    if(!S.queue.length){showToast('Queue is empty','error');return;}
+    if(S.currentToken)S.completed++;
+    const next=S.queue.shift();
+    S.currentToken=next.token;S.currentName=next.name;S.lastCalled=new Date();
+    S.avgTime=parseInt(document.getElementById('avg-time').value)||10;
+    flashToken();
+    showToast('Calling '+next.token+' — '+next.name);
+    render();
+  }
+
+  function skipCurrent() {
+    if(!S.currentToken){showToast('No active patient','error');return;}
+    showToast(S.currentToken+' skipped','error');
+    S.currentToken=null;S.currentName=null;
+    render();
+  }
+
+  function removePatient(id) {
+    S.queue=S.queue.filter(p=>p.id!==id);
+    render();
+  }
+
+  function confirmClear() {
+    document.getElementById('confirm-bar').classList.add('show');
+    document.getElementById('confirm-msg').textContent='Clear all '+S.queue.length+' patients from queue?';
+    document.getElementById('confirm-yes').onclick=()=>{S.queue=[];S.currentToken=null;S.currentName=null;hideConfirm();showToast('Queue cleared');render();};
+  }
+  function hideConfirm(){document.getElementById('confirm-bar').classList.remove('show');}
+
+  function updateAvg(v){S.avgTime=parseInt(v)||10;render();}
+
+  function setYourToken() {
+    const t=prompt('Enter your token (e.g. T03):');
+    if(t){S.yourToken=t.trim().toUpperCase();render();}
+  }
+
+  function flashToken() {
+    ['cs-token','ph-token'].forEach(id=>{
+      const el=document.getElementById(id);
+      el.classList.remove('flash');
+      void el.offsetWidth;
+      el.classList.add('flash');
+    });
+  }
+
+  function goHome() {
+    if(confirm('Return to home page? Any unsaved data will be lost.')) {
+      window.location.href='clinic_queue_coverpage.html';
+    }
+  }
+
+  function render() {
+    S.avgTime=parseInt(document.getElementById('avg-time').value)||10;
+    document.getElementById('s-current').textContent=S.currentToken||'—';
+    document.getElementById('s-waiting').textContent=S.queue.length;
+    document.getElementById('s-done').textContent=S.completed;
+    document.getElementById('s-waiting-alt').textContent=S.queue.length;
+    document.getElementById('s-done-alt').textContent=S.completed;
+    document.getElementById('queue-count').textContent=S.queue.length;
+    document.getElementById('cs-token').textContent=S.currentToken||'—';
+    document.getElementById('cs-name').textContent=S.currentName||'No active patient';
+    document.getElementById('cs-time').textContent=S.lastCalled?'Called at '+S.lastCalled.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
+    document.getElementById('ph-token').textContent=S.currentToken||'—';
+    document.getElementById('ph-name').textContent=S.currentName||'Waiting for first patient';
+    document.getElementById('ph-time').innerHTML=S.lastCalled?'<i class="ti ti-clock" style="font-size:12px;" aria-hidden="true"></i>&nbsp;Called at '+S.lastCalled.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
+
+    const ql=document.getElementById('queue-list');
+    if(!S.queue.length) {
+      ql.innerHTML='<div class="empty"><i class="ti ti-users"></i>No patients yet. Register one above.</div>';
+    }else {
+      ql.innerHTML=S.queue.map((p,i)=>`
+        <div class="q-item ${i===0?'next':''} ${p.priority==='urgent'?'urgent-item':''}">
+          <div class="q-token">${p.token}</div>
+          <div>
+            <div class="q-name">${p.name}</div>
+            <div class="q-wait">~${(i+1)*S.avgTime} min wait</div>
+          </div>
+          <span class="badge ${i===0?'badge-next':p.priority==='urgent'?'badge-urgent':'badge-normal'}">${i===0?'Next':p.priority}</span>
+          <button class="btn-ghost btn" onclick="removePatient(${p.id})" aria-label="Remove"><i class="ti ti-x" style="font-size:14px;" aria-hidden="true"></i></button>
+        </div>`).join('');
+    }
+
+    const yourIdx=S.yourToken?S.queue.findIndex(p=>p.token===S.yourToken):-1;
+    const ytBar=document.getElementById('your-token-bar');
+    if(S.yourToken&&yourIdx>=0) {
+      ytBar.style.display='flex';
+      document.getElementById('yt-tok').textContent=S.yourToken;
+      const wm=yourIdx*S.avgTime;
+      document.getElementById('yt-wait').textContent=wm>0?'~'+wm+' min away':"You're next!";
+      document.getElementById('pp-ahead').textContent=yourIdx;
+      document.getElementById('pp-wait').textContent=wm||'< 1';
+    }else if(S.yourToken&&S.currentToken===S.yourToken) {
+      ytBar.style.display='flex';
+      document.getElementById('yt-tok').textContent=S.yourToken;
+      document.getElementById('yt-wait').textContent="Being seen now!";
+      document.getElementById('pp-ahead').textContent=0;
+      document.getElementById('pp-wait').textContent=0;
+    }else {
+      ytBar.style.display='none';
+      document.getElementById('pp-ahead').textContent=S.queue.length;
+      document.getElementById('pp-wait').textContent=S.queue.length?S.queue.length*S.avgTime:'—';
+    }
+
+    const ul=document.getElementById('upcoming-list');
+    if(!S.queue.length) {
+      ul.innerHTML='<div class="empty"><i class="ti ti-clock"></i>Queue is empty.</div>';
+    }else {
+      ul.innerHTML=S.queue.slice(0,7).map((p,i)=>`
+        <div class="up-item ${S.yourToken===p.token?'yours':''}">
+          <div class="up-num">${p.token}</div>
+          <div style="flex:1;font-size:13px;color:#0f1623;font-weight:500;">${S.yourToken===p.token?'★ You — ':''}${p.token}</div>
+          <div style="font-size:11px;color:#94a3b8;">~${(i+1)*S.avgTime} min</div>
+          ${p.priority==='urgent'?'<span class="badge badge-urgent">urgent</span>':''}
+        </div>`).join('');
+    }
+  }
+
+  // Initialize with sample data
+  ['Rahul Sharma','Priya Mehta','Anil Kumar','Sunita Devi'].forEach((name,i)=>{
+    const token='T'+String(S.nextNum++).padStart(2,'0');
+    S.queue.push({id:Date.now()+i,token,name,priority:i===2?'urgent':'normal'});
+  });
+  S.queue.sort((a,b)=>(b.priority==='urgent')-(a.priority==='urgent'));
+  render();
+</script>
+
+</body>
+</html>
